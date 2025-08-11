@@ -1098,7 +1098,7 @@ const ImageAttachment = ({ file, onRemove, uploadProgress, error }) => {
 // - onReplaceTemporarySession: Called to replace temporary session ID with real WebSocket session ID
 //
 // This ensures uninterrupted chat experience by pausing sidebar refreshes during conversations.
-function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, messages, onFileOpen, onInputFocusChange, onSessionActive, onSessionInactive, onReplaceTemporarySession, onNavigateToSession, onShowSettings, autoExpandTools, showRawParameters, autoScrollToBottom, sendByCtrlEnter }) {
+function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, messages, onFileOpen, onInputFocusChange, onSessionActive, onSessionInactive, onReplaceTemporarySession, onNavigateToSession, onShowSettings, autoExpandTools, showRawParameters, autoScrollToBottom, sendByCtrlEnter, commands = [] }) {
   const [input, setInput] = useState(() => {
     if (typeof window !== 'undefined' && selectedProject) {
       return safeLocalStorage.getItem(`draft_input_${selectedProject.name}`) || '';
@@ -1136,7 +1136,7 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
   const scrollPositionRef = useRef({ height: 0, top: 0 });
   const [showCommandMenu, setShowCommandMenu] = useState(false);
-  const [slashCommands, setSlashCommands] = useState([]);
+  const slashCommands = commands;
   const [filteredCommands, setFilteredCommands] = useState([]);
   const [isTextareaExpanded, setIsTextareaExpanded] = useState(false);
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(-1);
@@ -1415,6 +1415,7 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
       }
     }
   }, [selectedProject?.name]);
+
 
 
   useEffect(() => {
@@ -2081,6 +2082,40 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
   };
 
   const handleKeyDown = (e) => {
+    // Handle command menu navigation
+    if (showCommandMenu && filteredCommands.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedCommandIndex(prev => 
+          prev < filteredCommands.length - 1 ? prev + 1 : 0
+        );
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedCommandIndex(prev => 
+          prev > 0 ? prev - 1 : filteredCommands.length - 1
+        );
+        return;
+      }
+      if (e.key === 'Tab' || e.key === 'Enter') {
+        e.preventDefault();
+        if (selectedCommandIndex >= 0) {
+          selectCommand(filteredCommands[selectedCommandIndex]);
+        } else if (filteredCommands.length > 0) {
+          selectCommand(filteredCommands[0]);
+        }
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowCommandMenu(false);
+        setFilteredCommands([]);
+        setSelectedCommandIndex(-1);
+        return;
+      }
+    }
+    
     // Handle file dropdown navigation
     if (showFileDropdown && filteredFiles.length > 0) {
       if (e.key === 'ArrowDown') {
@@ -2182,15 +2217,77 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
     }
   };
 
+  const selectCommand = (command) => {
+    const textBeforeSlash = input.slice(0, slashPosition);
+    const textAfterSlashQuery = input.slice(slashPosition);
+    const spaceIndex = textAfterSlashQuery.indexOf(' ');
+    const textAfterQuery = spaceIndex !== -1 ? textAfterSlashQuery.slice(spaceIndex) : '';
+    
+    const newInput = textBeforeSlash + '/' + command + ' ' + textAfterQuery;
+    const newCursorPos = textBeforeSlash.length + 1 + command.length + 1;
+    
+    // Immediately ensure focus is maintained
+    if (textareaRef.current && !textareaRef.current.matches(':focus')) {
+      textareaRef.current.focus();
+    }
+    
+    // Update input and cursor position
+    setInput(newInput);
+    setCursorPosition(newCursorPos);
+    
+    // Hide command menu
+    setShowCommandMenu(false);
+    setFilteredCommands([]);
+    setSelectedCommandIndex(-1);
+    setSlashPosition(-1);
+    
+    // Set cursor position synchronously 
+    if (textareaRef.current) {
+      // Use requestAnimationFrame for smoother updates
+      requestAnimationFrame(() => {
+        if (textareaRef.current) {
+          textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+          // Ensure focus is maintained
+          if (!textareaRef.current.matches(':focus')) {
+            textareaRef.current.focus();
+          }
+        }
+      });
+    }
+  };
+
   const handleInputChange = (e) => {
     const newValue = e.target.value;
+    const cursorPos = e.target.selectionStart;
     setInput(newValue);
-    setCursorPosition(e.target.selectionStart);
+    setCursorPosition(cursorPos);
     
     // Handle height reset when input becomes empty
     if (!newValue.trim()) {
       e.target.style.height = 'auto';
       setIsTextareaExpanded(false);
+    }
+    
+    // Handle command autocomplete with /
+    const textBeforeCursor = newValue.slice(0, cursorPos);
+    const lastSlashIndex = textBeforeCursor.lastIndexOf('/');
+    
+    // Check if we're at the start of input and typing a slash command
+    if (lastSlashIndex === 0 && cursorPos > 0) {
+      const commandQuery = textBeforeCursor.slice(1); // Remove the '/'
+      const filtered = slashCommands.filter(cmd => 
+        cmd.toLowerCase().includes(commandQuery.toLowerCase())
+      );
+      
+      setFilteredCommands(filtered);
+      setShowCommandMenu(filtered.length > 0);
+      setSelectedCommandIndex(0);
+      setSlashPosition(lastSlashIndex);
+    } else {
+      setShowCommandMenu(false);
+      setFilteredCommands([]);
+      setSelectedCommandIndex(-1);
+      setSlashPosition(-1);
     }
   };
 
@@ -2444,6 +2541,36 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
                   <div className="font-medium text-sm">{file.name}</div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 font-mono">
                     {file.path}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          
+          {showCommandMenu && filteredCommands.length > 0 && (
+            <div className="absolute bottom-full left-0 right-0 mb-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg max-h-48 overflow-y-auto z-50 backdrop-blur-sm">
+              {filteredCommands.map((command, index) => (
+                <div
+                  key={command}
+                  className={`px-4 py-3 cursor-pointer border-b border-gray-100 dark:border-gray-700 last:border-b-0 touch-manipulation ${
+                    index === selectedCommandIndex
+                      ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
+                      : 'hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
+                  }`}
+                  onMouseDown={(e) => {
+                    // Prevent textarea from losing focus on mobile
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    selectCommand(command);
+                  }}
+                >
+                  <div className="font-medium text-sm flex items-center">
+                    <span className="text-gray-400 mr-2">/</span>
+                    {command}
                   </div>
                 </div>
               ))}

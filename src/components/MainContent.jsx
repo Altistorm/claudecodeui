@@ -27,6 +27,7 @@ function MainContent({
   ws, 
   sendMessage, 
   messages,
+  commands,
   isMobile,
   onMenuClick,
   isLoading,
@@ -278,6 +279,7 @@ function MainContent({
               ws={ws}
               sendMessage={sendMessage}
               messages={messages}
+              commands={commands}
               onFileOpen={handleFileOpen}
               onInputFocusChange={onInputFocusChange}
               onSessionActive={onSessionActive}

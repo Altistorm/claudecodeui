@@ -593,6 +593,46 @@ async function addProjectManually(projectPath, displayName = null) {
   };
 }
 
+async function getCommands() {
+  const commandsDir = path.join(process.env.HOME, '.claude', 'commands');
+  const commands = [];
+  
+  try {
+    // Check if the commands directory exists
+    await fs.access(commandsDir);
+  } catch (error) {
+    // Directory doesn't exist, return empty array
+    console.log('Commands directory not found:', commandsDir);
+    return commands;
+  }
+  
+  async function scanDirectory(dirPath, relativePath = '') {
+    try {
+      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+        const currentRelativePath = relativePath ? `${relativePath}:${entry.name}` : entry.name;
+        
+        if (entry.isDirectory()) {
+          // Recursively scan subdirectories
+          await scanDirectory(fullPath, currentRelativePath);
+        } else if (entry.isFile() && entry.name.endsWith('.md')) {
+          // Add markdown file to commands list
+          const filename = path.basename(entry.name, '.md'); // Remove .md extension
+          const commandPath = relativePath ? `${relativePath}:${filename}` : filename;
+          commands.push(commandPath);
+        }
+      }
+    } catch (error) {
+      console.warn(`Error reading directory ${dirPath}:`, error.message);
+    }
+  }
+  
+  await scanDirectory(commandsDir);
+  return commands.sort(); // Return sorted list
+}
+
 
 export {
   getProjects,
@@ -607,5 +647,6 @@ export {
   loadProjectConfig,
   saveProjectConfig,
   extractProjectDirectory,
-  clearProjectDirectoryCache
+  clearProjectDirectoryCache,
+  getCommands
 };

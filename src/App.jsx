@@ -43,6 +43,7 @@ function AppContent() {
   const [showVersionModal, setShowVersionModal] = useState(false);
   
   const [projects, setProjects] = useState([]);
+  const [commands, setCommands] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [selectedSession, setSelectedSession] = useState(null);
   const [activeTab, setActiveTab] = useState('chat'); // 'chat' or 'files'
@@ -88,8 +89,9 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    // Fetch projects on component mount
+    // Fetch projects and commands on component mount
     fetchProjects();
+    fetchCommands();
   }, []);
 
   // Helper function to determine if an update is purely additive (new sessions/projects)
@@ -223,6 +225,27 @@ function AppContent() {
       console.error('Error fetching projects:', error);
     } finally {
       setIsLoadingProjects(false);
+    }
+  };
+
+  const fetchCommands = async () => {
+    try {
+      const token = localStorage.getItem('auth-token');
+      const response = await fetch('/api/commands', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setCommands(data.commands || []);
+      } else {
+        console.error('Failed to fetch commands');
+      }
+    } catch (error) {
+      console.error('Error fetching commands:', error);
     }
   };
 
@@ -578,6 +601,7 @@ function AppContent() {
           ws={ws}
           sendMessage={sendMessage}
           messages={messages}
+          commands={commands}
           isMobile={isMobile}
           onMenuClick={() => setSidebarOpen(true)}
           isLoading={isLoadingProjects}
